@@ -1,0 +1,136 @@
+#!/bin/sh
+
+RED='\033[0;31m'
+GREEN='\033[1;32m'
+ORANGE='\033[0;33m'
+NC='\033[0m'
+valid=0
+total=0
+path=$1
+timeout=5
+
+function watch_timeout {
+    sleep $timeout
+    kill $1
+}
+
+function test {
+    watch_timeout $$ &
+    watch_pid=$!
+    total=$(($total+1))
+    echo -ne "\t"
+    echo -ne $1
+    echo $2 | ./../../42sh &> .mysh_tmp
+    echo $2 | tcsh &> .tcsh_tmp
+    diff .mysh_tmp .tcsh_tmp
+    if [ $? -ne 0 ]
+    then
+        echo -ne "\t${RED}KO${NC}\n"
+    else
+        echo -ne "\t${GREEN}OK${NC}\n"
+        valid=$(($valid+1))
+    fi
+    kill $watch_pid
+    rm -f .mysh_tmp .tcsh_tmp
+}
+
+function display {
+    result=$((($valid * 100)/($total)))
+    if [ $result -lt 25 ]
+    then
+        echo -ne "${RED}"
+    elif [ $result -ge 25 -a $result -le 75 ]
+    then
+        echo -ne "${ORANGE}"
+    else
+        echo -ne "${GREEN}"
+    fi
+    echo "${result}%"
+    echo -ne "${NC}"
+}
+
+echo -ne "\t\tCOMPILING\nCOMPILATION\t"
+make re --silent -C ../.. &> /dev/null
+if [ $? -ne 0 ]
+then
+    echo -ne "\t${RED}KO${NC}\n"
+    exit 0
+else
+    echo -ne "\t${GREEN}OK${NC}\n"
+fi
+echo
+
+echo -ne "\t\tTESTING 42SH\n"
+
+echo "BASICS"
+test "EMPTY\t" ""
+test "SIMPLE EXEC" "ls"
+test "WRONG COMMAND" "skdls"
+
+echo "PATH HANDLING"
+test "PATH HANDLING 1" "/bin/tree"
+test "PATH HANDLING 2" "ls ../tests/.."
+
+#echo "SETENV AND UNSETENV"
+#test "SETENV VAR" "setenv LOL 3; env"
+#test "UNSETENV VAR" "unsetenv PATH; env"
+
+echo "CD"
+test "INVALID\t" "cd dlqdOQND"
+#test "CD -\t" "cd ..; cd -; env"
+
+echo "LINE FORMATTING"
+test "SPACES\t" " ls           . "
+test "TABS\t" "  ls          .   "
+test "SPACES & TABS" "       ls                     .   "
+
+echo "ERROR HANDLING"
+echo "int main() {return 1/0;}" > .test0.c; gcc -w .test0.c
+test "DIVZERO\t" "./a.out"
+rm -f .test0.c a.out
+
+echo "main;" > .test0.c; gcc -w .test0.c
+test "SEGFAULT" "./a.out"
+rm -f .test0.c a.out
+test "DIRECTORY" "./../tests"
+
+echo -ne "\n\t\tTESTING MINISHELL2\n"
+echo "SEPARATOR"
+test "SIMPLE\t" "ls; ls"
+test "MEDIUM\t" "ls;        ;ls;"
+test "HARD\t" ";;;;;;;;;;ls;        ; ;            ;;     ls;;; ; "
+test "AND 1" "ls && ls && ls && ls && dijqjd && ls"
+test "AND 2" "zzdqs && ls && ls"
+test "OR 1" "ls | cat -e || ls"
+test "OR 2" "sqdqsd || ls | cat -e > lol;;; cat lol"
+
+echo "PIPES"
+test "SIMPLE PIPE" "ls | cat -e"
+test "MEDIUM PIPE" "ls | cat -e | wc -l"
+test "HARD PIPE" "ls | cat -e | wc -l | cat -e | grep "$" | wc -l"
+
+echo "REDIRECTIONS"
+test "SIMPLE 1" "ls > lol; cat lol; rm -f lol"
+test "SIMPLE 2" "ls > lol; ls >> lol; cat lol; rm -f lol"
+echo "ls > .test" | tcsh
+test "SIMPLE 3" "cat -e < .test"
+rm .test
+test "ERROR\t" "cat < ZKNDAKD"
+
+echo "ADVANCED MANIPULATIONS"
+test "ADVANCED 1" "mkdir test ; cd test ; ls -a ; ls | cat | wc -c > tutu ; cat tutu; rm -f tutu; cd ..; rm -rf test"
+
+echo "PARSER ERRORS"
+test "INVALID PIPE 1" "| ls"
+test "INVALID PIPE 2" " ls | cat -e |"
+test "INVALID PIPE 3" " ls | cat -e ||| cat -e"
+test "INVALID CMD" "ls | ksqdqhdosq | cat -e"
+test "INVALID REDIRECTION 1" "< ls"
+test "INVALID REDIRECTION 2" "ls >"
+test "INVALID REDIRECTION 3" "cat <<"
+test "INVALID REDIRECTION 4" "ls >>"
+test "MISMATCHED QUOTES" "echo " ""
+test "MISMATCHED PARENTHESIS 1" "ls ((())"
+test "MISMATCHED PARENTHESIS 2" "ls )))()"
+
+display

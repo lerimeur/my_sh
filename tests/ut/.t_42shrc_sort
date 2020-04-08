@@ -1,0 +1,4 @@
+.. cd ..
+ll ls -la
+re make re
+va valgrind
